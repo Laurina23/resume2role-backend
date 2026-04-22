@@ -19,9 +19,9 @@ public class Resume {
 
     private String userId;
     private String fileName;
-    private String filePath;
     private String extractedText;
     private Map<String, Object> parsedData;
     private LocalDateTime uploadedAt;
     private TechnicalProfile technicalProfile;
+    private String fileUrl;
 }

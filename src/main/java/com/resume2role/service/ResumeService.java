@@ -8,12 +8,10 @@ import org.apache.tika.Tika;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class ResumeService {
@@ -22,59 +20,66 @@ public class ResumeService {
     private final LLMRolePredictor llmPredictor;
     private final ResumeRepository resumeRepository;
     private final SkillExtractor skillExtractor;
+    private final ProfileScorer profileScorer;
+    private final GeminiService geminiService;
+    private final FirebaseStorageService firebaseStorageService;
 
     public ResumeService(ResumeRepository resumeRepository,
                          SkillExtractor skillExtractor,
                          RuleBasedRolePredictor rulePredictor,
-                         LLMRolePredictor llmPredictor) {
+                         LLMRolePredictor llmPredictor,
+                         ProfileScorer profileScorer,
+                         GeminiService geminiService,
+                         FirebaseStorageService firebaseStorageService) {
+
         this.resumeRepository = resumeRepository;
         this.skillExtractor = skillExtractor;
         this.rulePredictor = rulePredictor;
         this.llmPredictor = llmPredictor;
+        this.profileScorer = profileScorer;
+        this.geminiService = geminiService;
+        this.firebaseStorageService = firebaseStorageService;
     }
 
     public Resume uploadResume(String userId, MultipartFile file) throws Exception {
 
-        String uploadDir = System.getProperty("user.dir") + "/uploads/resumes/";
-        File folder = new File(uploadDir);
-        if (!folder.exists()) {
-            folder.mkdirs();
-        }
-
-        String originalName = file.getOriginalFilename().replaceAll("\\s+", "_");
-        String uniqueFileName = UUID.randomUUID() + "_" + originalName;
-
-        File dest = new File(uploadDir + uniqueFileName);
-        file.transferTo(dest);
+        String fileUrl = firebaseStorageService.uploadFile(
+                file.getBytes(),
+                file.getOriginalFilename()
+        );
 
         Tika tika = new Tika();
-        String extractedText = tika.parseToString(dest);
+        String extractedText = tika.parseToString(file.getInputStream());
+
+        String aiAnalysis = geminiService.analyzeResume(extractedText);
 
         Map<String, Object> parsedData = parseResume(extractedText);
+        parsedData.put("aiAnalysis", aiAnalysis);
 
         SkillSet skills = skillExtractor.extractSkills(extractedText);
 
         String ruleRole = rulePredictor.predictRole(skills);
         String llmRole = llmPredictor.predictRole(extractedText);
 
-        String finalRole;
+        String finalRole = !llmRole.equalsIgnoreCase("Software Developer")
+                ? llmRole
+                : ruleRole;
 
-        if (!llmRole.equalsIgnoreCase("Software Developer"))
-            finalRole = llmRole;
-        else
-            finalRole = ruleRole;
+        int score = profileScorer.calculateScore(skills);
+        String experienceLevel = profileScorer.getExperienceLevel(score);
+
         TechnicalProfile technicalProfile = TechnicalProfile.builder()
                 .skills(skills)
                 .projects(new ArrayList<>())
                 .predictedRole(finalRole)
-                .experienceLevel("Unknown")
-                .score(0)
+                .experienceLevel(experienceLevel)
+                .score(score)
                 .build();
 
         Resume resume = Resume.builder()
                 .userId(userId)
-                .fileName(uniqueFileName)
-                .filePath(dest.getPath())
+                .fileName(file.getOriginalFilename())
+                .fileUrl(fileUrl) // ✅ NEW FIELD
                 .extractedText(extractedText)
                 .parsedData(parsedData)
                 .uploadedAt(LocalDateTime.now())
@@ -82,6 +87,18 @@ public class ResumeService {
                 .build();
 
         return resumeRepository.save(resume);
+    }
+
+    public void deleteResume(String resumeId) {
+
+        Resume resume = resumeRepository.findById(resumeId)
+                .orElseThrow(() -> new RuntimeException("Resume not found"));
+
+        if (resume.getFileUrl() != null) {
+            firebaseStorageService.deleteFile(resume.getFileUrl());
+        }
+
+        resumeRepository.deleteById(resumeId);
     }
 
     private Map<String, Object> parseResume(String text) {
