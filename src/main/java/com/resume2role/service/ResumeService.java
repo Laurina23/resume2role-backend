@@ -22,7 +22,7 @@ public class ResumeService {
     private final SkillExtractor skillExtractor;
     private final ProfileScorer profileScorer;
     private final GeminiService geminiService;
-    private final FirebaseStorageService firebaseStorageService;
+    private final CloudinaryService cloudinaryService;
 
     public ResumeService(ResumeRepository resumeRepository,
                          SkillExtractor skillExtractor,
@@ -30,7 +30,7 @@ public class ResumeService {
                          LLMRolePredictor llmPredictor,
                          ProfileScorer profileScorer,
                          GeminiService geminiService,
-                         FirebaseStorageService firebaseStorageService) {
+                         CloudinaryService cloudinaryService) {
 
         this.resumeRepository = resumeRepository;
         this.skillExtractor = skillExtractor;
@@ -38,15 +38,12 @@ public class ResumeService {
         this.llmPredictor = llmPredictor;
         this.profileScorer = profileScorer;
         this.geminiService = geminiService;
-        this.firebaseStorageService = firebaseStorageService;
+        this.cloudinaryService = cloudinaryService;
     }
 
     public Resume uploadResume(String userId, MultipartFile file) throws Exception {
 
-        String fileUrl = firebaseStorageService.uploadFile(
-                file.getBytes(),
-                file.getOriginalFilename()
-        );
+        String fileUrl = cloudinaryService.uploadFile(file);
 
         Tika tika = new Tika();
         String extractedText = tika.parseToString(file.getInputStream());
@@ -79,7 +76,7 @@ public class ResumeService {
         Resume resume = Resume.builder()
                 .userId(userId)
                 .fileName(file.getOriginalFilename())
-                .fileUrl(fileUrl) // ✅ NEW FIELD
+                .fileUrl(fileUrl) // Cloudinary URL
                 .extractedText(extractedText)
                 .parsedData(parsedData)
                 .uploadedAt(LocalDateTime.now())
@@ -95,10 +92,21 @@ public class ResumeService {
                 .orElseThrow(() -> new RuntimeException("Resume not found"));
 
         if (resume.getFileUrl() != null) {
-            firebaseStorageService.deleteFile(resume.getFileUrl());
+            try {
+                String publicId = extractPublicId(resume.getFileUrl());
+                cloudinaryService.deleteFile(publicId);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to delete file from Cloudinary", e);
+            }
         }
 
         resumeRepository.deleteById(resumeId);
+    }
+
+    private String extractPublicId(String url) {
+        return url
+                .substring(url.indexOf("/upload/") + 8)
+                .replaceAll("\\.[^.]+$", ""); // remove extension
     }
 
     private Map<String, Object> parseResume(String text) {
