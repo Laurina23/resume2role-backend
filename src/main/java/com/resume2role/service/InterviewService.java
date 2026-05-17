@@ -22,11 +22,13 @@ public class InterviewService {
     private final EvaluationService evaluationService;
     private final ResultService resultService;
 
-    public InterviewService(InterviewRepository interviewRepository,
-                            ResumeRepository resumeRepository,
-                            InterviewServiceHelper helper,
-                            EvaluationService evaluationService,
-                            ResultService resultService) {
+    public InterviewService(
+            InterviewRepository interviewRepository,
+            ResumeRepository resumeRepository,
+            InterviewServiceHelper helper,
+            EvaluationService evaluationService,
+            ResultService resultService
+    ) {
         this.interviewRepository = interviewRepository;
         this.resumeRepository = resumeRepository;
         this.helper = helper;
@@ -37,11 +39,31 @@ public class InterviewService {
     public Interview startInterview(String resumeId) {
 
         Resume resume = resumeRepository.findById(resumeId)
-                .orElseThrow(() -> new RuntimeException("Resume not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Resume not found"));
 
-        String questionsText = helper.generateQuestions(resume.getExtractedText());
+        String questionsText =
+                helper.generateQuestions(
+                        resume.getExtractedText()
+                );
 
-        List<String> questions = Arrays.asList(questionsText.split("\\n"));
+        List<String> questions =
+                Arrays.stream(
+                                questionsText
+                                        .replace("\\n", "\n")
+                                        .split("\\r?\\n")
+                        )
+                        .map(String::trim)
+                        .map(question ->
+                                question.replaceFirst(
+                                        "^\\d+\\.\\s*",
+                                        ""
+                                )
+                        )
+                        .filter(question ->
+                                !question.isEmpty()
+                        )
+                        .toList();
 
         Interview interview = Interview.builder()
                 .userId(resume.getUserId())
@@ -58,27 +80,57 @@ public class InterviewService {
 
     public String getNextQuestion(String interviewId) {
 
-        Interview interview = interviewRepository.findById(interviewId)
-                .orElseThrow(() -> new RuntimeException("Interview not found"));
+        Interview interview =
+                interviewRepository.findById(interviewId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Interview not found"
+                                ));
 
-        if (interview.getCurrentQuestionIndex() >= interview.getQuestions().size()) {
+        if (
+                interview.getCurrentQuestionIndex()
+                        >=
+                        interview.getQuestions().size()
+        ) {
+
             interview.setStatus("COMPLETED");
+
             interviewRepository.save(interview);
+
             return "Interview completed";
         }
 
-        return interview.getQuestions().get(interview.getCurrentQuestionIndex());
+        return interview.getQuestions()
+                .get(
+                        interview.getCurrentQuestionIndex()
+                );
     }
 
-    public Interview submitAnswer(String interviewId, String answerText, String transcript, Long duration) {
+    public Interview submitAnswer(
+            String interviewId,
+            String answerText,
+            String transcript,
+            Long duration
+    ) {
 
-        Interview interview = interviewRepository.findById(interviewId)
-                .orElseThrow(() -> new RuntimeException("Interview not found"));
+        Interview interview =
+                interviewRepository.findById(interviewId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Interview not found"
+                                ));
 
-        String currentQuestion = interview.getQuestions()
-                .get(interview.getCurrentQuestionIndex());
+        String currentQuestion =
+                interview.getQuestions()
+                        .get(
+                                interview.getCurrentQuestionIndex()
+                        );
 
-        Evaluation eval = evaluationService.evaluate(currentQuestion, answerText);
+        Evaluation eval =
+                evaluationService.evaluate(
+                        currentQuestion,
+                        answerText
+                );
 
         Answer answer = Answer.builder()
                 .question(currentQuestion)
@@ -89,12 +141,20 @@ public class InterviewService {
                 .build();
 
         interview.getAnswers().add(answer);
-        interview.setCurrentQuestionIndex(interview.getCurrentQuestionIndex() + 1);
+
+        interview.setCurrentQuestionIndex(
+                interview.getCurrentQuestionIndex() + 1
+        );
 
         return interviewRepository.save(interview);
     }
+
     public Interview getInterviewById(String id) {
+
         return interviewRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Interview not found"));
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Interview not found"
+                        ));
     }
 }

@@ -1,5 +1,7 @@
 package com.resume2role.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,115 +16,172 @@ public class GeminiService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
+    private final ObjectMapper objectMapper =
+            new ObjectMapper();
+
     public String analyzeResume(String resumeText) {
 
         try {
-            String prompt = "You are a technical interviewer.\n" +
-                    "Generate exactly 2 interview questions.\n" +
-                    "Return ONLY questions, no explanations.\n" +
-                    "Each question on a new line.\n\n" +
-                    "Resume:\n" + resumeText;
 
-            String safePrompt = prompt
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\n", "\\n");
+            String prompt =
+                    """
+                    You are a technical interviewer.
 
-            String requestBody = """
-            {
-              "contents": [{
-                "parts":[{"text": "%s"}]
-              }]
-            }
-            """.formatted(safePrompt);
+                    Generate easy and beginner friendly straight-forward technical interview questions based on the candidate's resume.
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + apiKey
-                    ))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .build();
+                    Requirements:
+                    - Return only interview questions
+                    - Put each question on a separate line
+                    - Do not include explanations
+                    - Do not combine questions into paragraphs
 
-            HttpResponse<String> response = HttpClient.newHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+                    Resume:
+                    """ + resumeText;
 
-            return extractText(response.body());
+            String requestBody =
+                    """
+                    {
+                      "contents": [{
+                        "parts":[{"text": "%s"}]
+                      }]
+                    }
+                    """
+                            .formatted(
+                                    prompt.replace("\"", "\\\"")
+                            );
+
+            HttpRequest request =
+                    HttpRequest.newBuilder()
+                            .uri(
+                                    URI.create(
+                                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key="
+                                                    + apiKey
+                                    )
+                            )
+                            .header(
+                                    "Content-Type",
+                                    "application/json"
+                            )
+                            .POST(
+                                    HttpRequest.BodyPublishers.ofString(
+                                            requestBody
+                                    )
+                            )
+                            .build();
+
+            HttpResponse<String> response =
+                    HttpClient.newHttpClient()
+                            .send(
+                                    request,
+                                    HttpResponse.BodyHandlers.ofString()
+                            );
+
+            return extractText(
+                    response.body()
+            );
 
         } catch (Exception e) {
-            return "Gemini Error: " + e.getMessage();
+
+            return "Gemini Error: "
+                    + e.getMessage();
         }
     }
 
     private String extractText(String json) {
+
         try {
-            String marker = "\"text\": \"";
-            int start = json.indexOf(marker);
 
-            if (start == -1) return json;
+            JsonNode root =
+                    objectMapper.readTree(json);
 
-            start += marker.length();
-
-            StringBuilder result = new StringBuilder();
-            boolean escape = false;
-
-            for (int i = start; i < json.length(); i++) {
-                char c = json.charAt(i);
-
-                if (escape) {
-                    result.append(c);
-                    escape = false;
-                } else if (c == '\\') {
-                    escape = true;
-                } else if (c == '"') {
-                    break;
-                } else {
-                    result.append(c);
-                }
-            }
-
-            return result.toString();
+            return root
+                    .get("candidates")
+                    .get(0)
+                    .get("content")
+                    .get("parts")
+                    .get(0)
+                    .get("text")
+                    .asText();
 
         } catch (Exception e) {
+
             return json;
         }
     }
-    public String evaluateAnswer(String question, String answer) {
+
+    public String evaluateAnswer(
+            String question,
+            String answer
+    ) {
 
         try {
-            String prompt = "Evaluate the following answer.\n\n" +
-                    "Question: " + question + "\n" +
-                    "Answer: " + answer + "\n\n" +
-                    "Return STRICT JSON:\n" +
-                    "{\n" +
-                    "  \"score\": number (0-10),\n" +
-                    "  \"feedback\": \"...\",\n" +
-                    "  \"improvement\": \"...\"\n" +
-                    "}";
 
-            String requestBody = """
-        {
-          "contents": [{
-            "parts":[{"text": "%s"}]
-          }]
-        }
-        """.formatted(prompt.replace("\"", "\\\""));
+            String prompt =
+                    """
+                    Evaluate the following answer.
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey
-                    ))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .build();
+                    Question:
+                    """ + question +
 
-            HttpResponse<String> response = HttpClient.newHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+                            """
+        
+                            Answer:
+                            """ + answer +
+
+                            """
+        
+                            Return STRICT JSON:
+                            {
+                              "score": number (0-10),
+                              "feedback": "...",
+                              "improvement": "..."
+                            }
+                            """;
+
+            String requestBody =
+                    """
+                    {
+                      "contents": [{
+                        "parts":[{"text": "%s"}]
+                      }]
+                    }
+                    """
+                            .formatted(
+                                    prompt.replace("\"", "\\\"")
+                            );
+
+            HttpRequest request =
+                    HttpRequest.newBuilder()
+                            .uri(
+                                    URI.create(
+                                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="
+                                                    + apiKey
+                                    )
+                            )
+                            .header(
+                                    "Content-Type",
+                                    "application/json"
+                            )
+                            .POST(
+                                    HttpRequest.BodyPublishers.ofString(
+                                            requestBody
+                                    )
+                            )
+                            .build();
+
+            HttpResponse<String> response =
+                    HttpClient.newHttpClient()
+                            .send(
+                                    request,
+                                    HttpResponse.BodyHandlers.ofString()
+                            );
 
             return response.body();
 
         } catch (Exception e) {
-            return "Error: " + e.getMessage();
+
+            return "Error: "
+                    + e.getMessage();
         }
     }
 }

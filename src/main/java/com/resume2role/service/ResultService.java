@@ -2,6 +2,7 @@ package com.resume2role.service;
 
 import com.resume2role.dto.InterviewResult;
 import com.resume2role.model.Answer;
+import com.resume2role.model.Evaluation;
 import com.resume2role.model.Interview;
 import com.resume2role.repository.InterviewRepository;
 import org.springframework.stereotype.Service;
@@ -21,42 +22,84 @@ public class ResultService {
     public InterviewResult generateResult(String interviewId) {
 
         Interview interview = interviewRepository.findById(interviewId)
-                .orElseThrow(() -> new RuntimeException("Interview not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Interview not found"));
 
-        List<Answer> answers = interview.getAnswers();
+        List<Answer> answers =
+                interview.getAnswers();
 
         double totalScore = 0;
+
         int count = 0;
 
-        List<String> strengths = new ArrayList<>();
-        List<String> weaknesses = new ArrayList<>();
+        List<String> strengths =
+                new ArrayList<>();
+
+        List<String> weaknesses =
+                new ArrayList<>();
 
         for (Answer ans : answers) {
 
-            if (ans.getEvaluation() == null) continue;
+            Evaluation evaluation =
+                    ans.getEvaluation();
 
-            int score = ans.getEvaluation().getScore();
+            if (evaluation == null) {
+                continue;
+            }
+
+            int score =
+                    evaluation.getScore();
+
             totalScore += score;
+
             count++;
 
+            String feedback =
+                    evaluation.getFeedback();
+
+            String improvement =
+                    evaluation.getImprovement();
+
             if (score >= 7) {
-                strengths.add(ans.getQuestion());
+
+                strengths.add(
+                        feedback
+                );
+
             } else {
-                weaknesses.add(ans.getQuestion());
+
+                weaknesses.add(
+                        improvement
+                );
             }
         }
 
-        double avg = count == 0 ? 0 : totalScore / count;
+        double averageScore =
+                count == 0
+                        ? 0
+                        : totalScore / count;
 
         String overallFeedback;
 
-        if (avg >= 8) overallFeedback = "Excellent performance";
-        else if (avg >= 6) overallFeedback = "Good, but needs improvement";
-        else overallFeedback = "Needs significant improvement";
+        if (averageScore >= 8) {
+
+            overallFeedback =
+                    "Excellent technical performance with strong communication and problem-solving skills.";
+
+        } else if (averageScore >= 6) {
+
+            overallFeedback =
+                    "Good performance overall, but there are some areas that need improvement.";
+
+        } else {
+
+            overallFeedback =
+                    "Needs significant improvement in technical depth, clarity, and confidence.";
+        }
 
         return InterviewResult.builder()
                 .interviewId(interviewId)
-                .averageScore(avg)
+                .averageScore(averageScore)
                 .totalQuestions(answers.size())
                 .strengths(strengths)
                 .weaknesses(weaknesses)
