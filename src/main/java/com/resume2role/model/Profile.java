@@ -8,14 +8,17 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@Document(collection = "users")
-public class User {
+@Document(collection = "profiles")
+public class Profile {
 
     @Id
     private String id;
 
-    private String name;
     private String email;
-    private String password;
-    private String role;
+    private String fullName;
+    private String targetRole;
+    private String techStack;
+    private String phone;
+    private String city;
+    private String avatar;
 }
