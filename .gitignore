@@ -36,3 +36,4 @@ build/
 .env
 application-secret.properties
 application-local.properties
+.env.docker
